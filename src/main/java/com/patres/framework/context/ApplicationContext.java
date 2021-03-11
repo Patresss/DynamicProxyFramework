@@ -4,27 +4,32 @@ import com.patres.framework.FrameworkException;
 import com.patres.framework.ProxyFrameInvocationHandler;
 import com.patres.framework.component.Autowired;
 import com.patres.framework.component.Component;
+import org.reflections.Reflections;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
 public class ApplicationContext {
 
-    private static final Map<Class<?>, Object> singletonObject = new HashMap<>();
+    private final Map<Class<?>, Object> beanRegistry = new HashMap<>();
+    private final Set<Class<?>> componentsClasses;
 
-    public static <T> T getBeanDynamicProxy(final Class<T> clazz) {
+    public ApplicationContext(Class<?> mainClass) {
+        final Reflections reflections = new Reflections(mainClass.getPackage().getName());
+        this.componentsClasses = reflections.getTypesAnnotatedWith(Component.class).stream()
+                .filter(clazz -> !clazz.isInterface())
+                .collect(Collectors.toSet());
+    }
+
+    public <T> T getBean(final Class<T> clazz) {
         try {
             if (!clazz.isInterface()) {
                 throw new FrameworkException("Class " + clazz.getName() + " need to be an interface");
             }
-
-            final Class<T> implementationClass = findImplementation(clazz);
+            final Class<T> implementationClass = getImplementationByInterface(clazz);
             final Constructor<T> constructor = findConstructor(implementationClass);
             final Object[] parameters = calculateParameters(constructor);
             final T bean = constructor.newInstance(parameters);
@@ -42,15 +47,21 @@ public class ApplicationContext {
         }
     }
 
-    private static <T> Class<T> findImplementation(final Class<T> clazz) throws ClassNotFoundException {
-        final Class<T> implementationClass = (Class<T>) Class.forName(clazz.getName() + "Impl");
-        if (!implementationClass.isAnnotationPresent(Component.class)) {
-            throw new FrameworkException("Class " + implementationClass.getName() + " is not a Component");
+    @SuppressWarnings("unchecked")
+    private <T> Class<T> getImplementationByInterface(Class<T> interfaceItem) {
+        final Set<Class<?>> classesWithInterface = componentsClasses.stream()
+                .filter(componentsClass -> Arrays.asList(componentsClass.getInterfaces()).contains(interfaceItem))
+                .collect(Collectors.toSet());
+        if (classesWithInterface.size() > 1) {
+            throw new FrameworkException("There are more than one (" + classesWithInterface.size() + ")class with interface: " + interfaceItem);
         }
-        return implementationClass;
+        return (Class<T>) classesWithInterface.stream()
+                .findFirst()
+                .orElseThrow(() -> new FrameworkException("There is no class with interface: " + interfaceItem));
     }
 
-    private static <T> Constructor<T> findConstructor(final Class<T> clazz) {
+    @SuppressWarnings("unchecked")
+    private <T> Constructor<T> findConstructor(final Class<T> clazz) {
         final Constructor<T>[] constructors = (Constructor<T>[]) clazz.getConstructors();
         if (constructors.length == 1) {
             return constructors[0];
@@ -69,10 +80,10 @@ public class ApplicationContext {
                 .orElseThrow(() -> new FrameworkException("Cannot find Autowired constructor for class " + clazz.getName()));
     }
 
-    private static Object[] calculateParameters(final Constructor<?> constructor) {
+    private Object[] calculateParameters(final Constructor<?> constructor) {
         final Class<?>[] parameterTypes = constructor.getParameterTypes();
         return Arrays.stream(parameterTypes)
-                .map(parameterClass -> singletonObject.computeIfAbsent(parameterClass, ApplicationContext::getBeanDynamicProxy))
+                .map(parameterClass -> beanRegistry.computeIfAbsent(parameterClass, this::getBean))
                 .toArray(Object[]::new);
     }
 

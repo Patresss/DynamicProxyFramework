@@ -11,7 +11,8 @@ public class MainApp {
     private static final Logger logger = LoggerFactory.getLogger(MainApp.class);
 
     public static void main(String[] args) {
-        final CompanyService companyService = ApplicationContext.getBeanDynamicProxy(CompanyService.class);
+        final ApplicationContext applicationContext = new ApplicationContext(MainApp.class);
+        final CompanyService companyService = applicationContext.getBean(CompanyService.class);
         final Company company = new Company();
         companyService.create(company);
 //        logger.info(companyService.generateCompanyName(1L));
