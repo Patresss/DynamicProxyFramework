@@ -21,6 +21,7 @@ public class CompanyServiceImpl implements CompanyService {
         this.companyDao = companyDao;
     }
 
+
     @Override
     @Transactional
     public void create(final Company company) {
@@ -31,7 +32,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Cacheable
-    public String generateCompanyName(final Long id) {
+    public final String generateCompanyName(final Long id) {
         return "Company " + id + "_" + UUID.randomUUID();
     }
 
